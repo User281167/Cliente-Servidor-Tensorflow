@@ -2,11 +2,11 @@ import argparse
 
 import tensorflow as tf
 
-from evaluate import evaluate_train, get_confusion_matrix
-from train import train_minibatch
-from utils import format_elapsed, plot_confusion_matrix, plot_grid, time_wrapper
+from evaluate import get_confusion_matrix
+from utils import plot_confusion_matrix, plot_grid, time_wrapper
 
 from .load_data import load_cifar10_data, plot_cifar10_images
+from .model import Cifar10Model
 
 
 @time_wrapper
@@ -30,72 +30,28 @@ def train(
 
     plot_cifar10_images(train_dataset, gray=gray, normalize=normalize)
 
-    if conv:
-        model = tf.keras.models.Sequential(
-            [
-                # Conv block 1
-                tf.keras.layers.Conv2D(
-                    32,
-                    kernel_size=3,
-                    padding="same",
-                    input_shape=(32, 32, 1 if gray else 3),
-                ),
-                tf.keras.layers.LeakyReLU(negative_slope=0.01),
-                tf.keras.layers.SpatialDropout2D(0.2),
-                tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-                # Conv block 2
-                tf.keras.layers.Conv2D(64, kernel_size=3, padding="same"),
-                tf.keras.layers.LeakyReLU(negative_slope=0.01),
-                tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-                # Classifier
-                tf.keras.layers.Flatten(),  # (batch, 8, 8, 64) → (batch, 4096)
-                tf.keras.layers.Dense(128),
-                tf.keras.layers.Dropout(0.2),
-                tf.keras.layers.LeakyReLU(negative_slope=0.01),
-                tf.keras.layers.Dense(10),
-            ]
+    model = Cifar10Model(gray=gray, conv=conv)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=["accuracy"],
+    )
+    hist = model.fit(train_dataset, epochs=epochs, validation_data=test_dataset)
+
+    # Extraer valores
+    history = list(
+        zip(
+            zip(hist.history["loss"], hist.history["val_loss"]),
+            zip(hist.history["accuracy"], hist.history["val_accuracy"]),
+            hist.history["gnorm"],
         )
-    else:
-        model = tf.keras.models.Sequential(
-            [
-                tf.keras.layers.Flatten(input_shape=(32, 32, 1 if gray else 3)),
-                tf.keras.layers.Dense(128),
-                tf.keras.layers.LeakyReLU(negative_slope=0.01),
-                tf.keras.layers.Dropout(0.2),
-                tf.keras.layers.Dense(32),
-                tf.keras.layers.LeakyReLU(negative_slope=0.01),
-                tf.keras.layers.Dense(10),
-            ]
-        )
+    )
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-
-    log_interval = epochs // 10 or 1
-    history = []
-
-    for epoch in range(epochs):
-        loss, acc, gnorm, elapsed, throughput = train_minibatch(
-            model, optimizer, loss_fn, train_dataset
-        )
-        loss_test, acc_test = evaluate_train(model, loss_fn, test_dataset)
-        history.append(((loss, loss_test), (acc, acc_test), gnorm))
-
-        if epoch % log_interval == 0 or epoch == epochs - 1 or epoch == 0:
-            print(
-                f"Epoch {epoch + 1:02d}/{epochs} | "
-                f"Loss: {loss:.4f} | Acc: {acc * 100:.2f}% | "
-                f"Test Loss: {loss_test:.4f} | Test Acc: {acc_test * 100:.2f}% | "
-                f"GNorm: {gnorm:.4f} | "
-                f"Throughput: {throughput:.0f} samples/s | "
-                f"Time: {format_elapsed(elapsed)}"
-            )
-
-    conf_maxtrix = get_confusion_matrix(model, test_dataset)
     plot_grid(
-        history,
+        list(history),
         labels=[("Loss", "Train", "Test"), ("Acc", "Train", "Test"), "Grad Norm"],
     )
+    conf_maxtrix = get_confusion_matrix(model, test_dataset)
     plot_confusion_matrix(conf_maxtrix)
 
 
