@@ -1,5 +1,7 @@
 import argparse
 
+import tensorflow as tf
+
 from .load_data import load_cifar10_data, plot_cifar10_images
 
 
@@ -21,6 +23,30 @@ def train(
     )
 
     plot_cifar10_images(train_dataset, gray=gray, normalize=normalize)
+
+    model = tf.keras.models.Sequential(
+        [
+            tf.keras.layers.Flatten(input_shape=(32, 32, 1 if gray else 3)),
+            tf.keras.layers.Dense(128),
+            tf.keras.layers.LeakyReLU(negative_slope=0.01),
+            tf.keras.layers.Dropout(0.2),
+            tf.keras.layers.Dense(32),
+            tf.keras.layers.LeakyReLU(negative_slope=0.01),
+            tf.keras.layers.Dense(10),
+        ]
+    )
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(
+            from_logits=True
+        ),  # porque no hay softmax
+        metrics=["accuracy"],
+    )
+
+    model.summary()
+    model.fit(train_dataset, epochs=epochs)
+    model.evaluate(test_dataset)
 
 
 if __name__ == "__main__":

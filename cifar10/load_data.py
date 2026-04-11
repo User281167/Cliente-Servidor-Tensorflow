@@ -40,16 +40,19 @@ def load_cifar10_data(
     # Cargar dataset
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
+    y_train = y_train.flatten()  # (50000, 1) → (50000,)
+    y_test = y_test.flatten()  # (10000, 1) → (10000,)
+
     # Crear datasets tipo tf.data
     train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
     # Normalización: (x - 0.5) / 0.5  → rango [-1, 1]
     def preprocess(image, label):
-        image = tf.cast(image, tf.float32) / 255.0
-
         if gray:
             image = tf.image.rgb_to_grayscale(image)
+
+        image = tf.cast(image, tf.float32) / 255.0
 
         if not normalize:
             return image, label
@@ -93,7 +96,7 @@ def plot_cifar10_images(ds, num_images=10, gray=True, normalize=False):
     # obtener datos del batch
     for images, labels in ds:
         for img, lbl in zip(images.numpy(), labels.numpy()):
-            collected.append((img, lbl[0]))
+            collected.append((img, int(lbl)))
 
             if len(collected) >= num_images:
                 break
