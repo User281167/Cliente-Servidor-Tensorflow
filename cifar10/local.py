@@ -11,6 +11,7 @@ from .load_data import load_cifar10_data, plot_cifar10_images
 
 @time_wrapper
 def train(
+    conv=False,
     gray=True,
     normalize=False,
     batch_size=128,
@@ -29,17 +30,43 @@ def train(
 
     plot_cifar10_images(train_dataset, gray=gray, normalize=normalize)
 
-    model = tf.keras.models.Sequential(
-        [
-            tf.keras.layers.Flatten(input_shape=(32, 32, 1 if gray else 3)),
-            tf.keras.layers.Dense(128),
-            tf.keras.layers.LeakyReLU(negative_slope=0.01),
-            tf.keras.layers.Dropout(0.2),
-            tf.keras.layers.Dense(32),
-            tf.keras.layers.LeakyReLU(negative_slope=0.01),
-            tf.keras.layers.Dense(10),
-        ]
-    )
+    if conv:
+        model = tf.keras.models.Sequential(
+            [
+                # Conv block 1
+                tf.keras.layers.Conv2D(
+                    32,
+                    kernel_size=3,
+                    padding="same",
+                    input_shape=(32, 32, 1 if gray else 3),
+                ),
+                tf.keras.layers.LeakyReLU(negative_slope=0.01),
+                tf.keras.layers.SpatialDropout2D(0.2),
+                tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
+                # Conv block 2
+                tf.keras.layers.Conv2D(64, kernel_size=3, padding="same"),
+                tf.keras.layers.LeakyReLU(negative_slope=0.01),
+                tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
+                # Classifier
+                tf.keras.layers.Flatten(),  # (batch, 8, 8, 64) → (batch, 4096)
+                tf.keras.layers.Dense(128),
+                tf.keras.layers.Dropout(0.2),
+                tf.keras.layers.LeakyReLU(negative_slope=0.01),
+                tf.keras.layers.Dense(10),
+            ]
+        )
+    else:
+        model = tf.keras.models.Sequential(
+            [
+                tf.keras.layers.Flatten(input_shape=(32, 32, 1 if gray else 3)),
+                tf.keras.layers.Dense(128),
+                tf.keras.layers.LeakyReLU(negative_slope=0.01),
+                tf.keras.layers.Dropout(0.2),
+                tf.keras.layers.Dense(32),
+                tf.keras.layers.LeakyReLU(negative_slope=0.01),
+                tf.keras.layers.Dense(10),
+            ]
+        )
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -74,6 +101,7 @@ def train(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Entrenar CIFAR-10 en local")
+    parser.add_argument("--conv", action="store_true", help="Usar modelo convolucional")
     parser.add_argument("--rgb", action="store_true", help="Usar imagenes en RGB")
     parser.add_argument(
         "--normalize", action="store_true", help="Normalizar imagenes [-1, 1]"
@@ -88,6 +116,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     train(
+        conv=args.conv,
         gray=not args.rgb,
         normalize=args.normalize,
         batch_size=args.batch_size,
