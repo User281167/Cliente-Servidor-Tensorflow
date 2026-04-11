@@ -2,9 +2,14 @@ import argparse
 
 import tensorflow as tf
 
+from evaluate import evaluate_train, get_confusion_matrix
+from train import train_minibatch
+from utils import format_elapsed, plot_confusion_matrix, plot_grid, time_wrapper
+
 from .load_data import load_cifar10_data, plot_cifar10_images
 
 
+@time_wrapper
 def train(
     gray=True,
     normalize=False,
@@ -36,17 +41,35 @@ def train(
         ]
     )
 
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-        loss=tf.keras.losses.SparseCategoricalCrossentropy(
-            from_logits=True
-        ),  # porque no hay softmax
-        metrics=["accuracy"],
-    )
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    model.summary()
-    model.fit(train_dataset, epochs=epochs)
-    model.evaluate(test_dataset)
+    log_interval = epochs // 10 or 1
+    history = []
+
+    for epoch in range(epochs):
+        loss, acc, gnorm, elapsed, throughput = train_minibatch(
+            model, optimizer, loss_fn, train_dataset
+        )
+        loss_test, acc_test = evaluate_train(model, loss_fn, test_dataset)
+        history.append(((loss, loss_test), (acc, acc_test), gnorm))
+
+        if epoch % log_interval == 0 or epoch == epochs - 1 or epoch == 0:
+            print(
+                f"Epoch {epoch + 1:02d}/{epochs} | "
+                f"Loss: {loss:.4f} | Acc: {acc * 100:.2f}% | "
+                f"Test Loss: {loss_test:.4f} | Test Acc: {acc_test * 100:.2f}% | "
+                f"GNorm: {gnorm:.4f} | "
+                f"Throughput: {throughput:.0f} samples/s | "
+                f"Time: {format_elapsed(elapsed)}"
+            )
+
+    conf_maxtrix = get_confusion_matrix(model, test_dataset)
+    plot_grid(
+        history,
+        labels=[("Loss", "Train", "Test"), ("Acc", "Train", "Test"), "Grad Norm"],
+    )
+    plot_confusion_matrix(conf_maxtrix)
 
 
 if __name__ == "__main__":
@@ -56,7 +79,9 @@ if __name__ == "__main__":
         "--normalize", action="store_true", help="Normalizar imagenes [-1, 1]"
     )
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size")
-    parser.add_argument("--buffer-size", type=int, default=10000, help="Buffer size")
+    parser.add_argument(
+        "--buffer-size", type=int, default=10000, help="Buffer size para shuffle"
+    )
     parser.add_argument("--ram", action="store_true", help="Cargar datos en RAM")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--epochs", type=int, default=20, help="Número de epochs")
