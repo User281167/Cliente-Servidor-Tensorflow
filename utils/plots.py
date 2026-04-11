@@ -7,11 +7,26 @@ import numpy as np
 def plot_confusion_matrix(
     conf_matrix: np.ndarray,
     save_path: str | None = None,
-    class_names: List[str] | None = None,
-    title: str = "Confusion Matrix",
+    class_names: list[str] | None = None,
 ):
+    """
+    Gráfica una matriz de confusión mostrando:
+    - Conteo absoluto
+    - Porcentaje por fila (clase real)
+
+    Args:
+        conf_matrix: Matriz de confusión.
+        save_path: Ruta para guardar la imagen (opcional).
+        class_names: Lista de nombres de clases (opcional).
+    """
+
+    # Normalización por filas (porcentaje)
+    row_sums = conf_matrix.sum(axis=1, keepdims=True)
+    conf_matrix_norm = conf_matrix / np.clip(row_sums, 1e-8, None)
+
+    # Plot base
     fig, ax = plt.subplots(figsize=(8, 7))
-    im = ax.imshow(conf_matrix, interpolation="nearest", cmap="Blues")
+    im = ax.imshow(conf_matrix_norm, interpolation="nearest", cmap="Blues")
     fig.colorbar(im, ax=ax)
 
     num_classes = conf_matrix.shape[0]
@@ -25,29 +40,30 @@ def plot_confusion_matrix(
         yticklabels=labels,
         xlabel="Predicted label",
         ylabel="True label",
-        title=title,
+        title="Confusion Matrix",
     )
 
-    # ← diferencia clave: sin .item() ni .numel() — son numpy arrays
-    threshold = conf_matrix.max() / 2
-
-    for i in range(conf_matrix.shape[0]):
-        for j in range(conf_matrix.shape[1]):
+    # Texto en cada celda (conteo + porcentaje)
+    for i in range(num_classes):
+        for j in range(num_classes):
             value = int(conf_matrix[i, j])
+            percentage = conf_matrix_norm[i, j]
+
             ax.text(
                 j,
                 i,
-                value,
+                f"{value}\n{percentage:.1%}",
                 ha="center",
                 va="center",
-                color="white" if value > threshold else "black",
+                fontsize=9,
+                color="white" if percentage > 0.5 else "black",
             )
 
-    fig.tight_layout()
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    fig.tight_layout()
 
     if save_path:
-        plt.savefig(f"{save_path}/confusion_matrix.png")
+        plt.savefig(f"{save_path}/confusion_matrix.png", dpi=300, bbox_inches="tight")
     else:
         plt.show()
 

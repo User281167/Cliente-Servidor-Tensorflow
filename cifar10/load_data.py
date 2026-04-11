@@ -15,78 +15,103 @@ cifar10_classes = [
 ]
 
 
-def load_cifar10_data(
+def load_cifar10_ddp(
+    buffer_size,
     gray=True,
     normalize=False,
     ram=False,
-    distributed=False,
-    batch_size=128,
-    buffer_size=10000,
+    global_batch_size=None,
 ):
     """
-    Carga y preprocesa el dataset CIFAR-10.
+    Carga y preprocesa el dataset CIFAR-10 para DDP.
 
     Args:
-        batch_size (int): Tamaño del batch.
-        normalize (bool): Si se debe normalizar las imágenes.
         buffer_size (int): Tamaño del buffer para el shuffle.
+        gray (bool): Si se debe convertir las imágenes a escala de grises.
+        normalize (bool): Si se debe normalizar las imágenes. [0, 1] -> [-1, 1]
         ram (bool): Si se debe cargar todo el dataset en RAM.
-        distributed (bool): Si se debe configurar el dataset para DDP.
+        global_batch_size (int): Tamaño del batch global para DDP.
 
     Returns:
         train_ds, test_ds: Datasets de entrenamiento y prueba.
     """
 
-    # Cargar dataset
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
+    def dataset_fn(input_context):
+        (x_train, y_train), _ = tf.keras.datasets.cifar10.load_data()
+        y_train = y_train.flatten()
 
-    y_train = y_train.flatten()  # (50000, 1) → (50000,)
-    y_test = y_test.flatten()  # (10000, 1) → (10000,)
+        def preprocess(image, label):
+            if gray:
+                image = tf.image.rgb_to_grayscale(image)
 
-    # Crear datasets tipo tf.data
-    train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-    test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
+            image = tf.cast(image, tf.float32) / 255.0
 
-    # Normalización: (x - 0.5) / 0.5  → rango [-1, 1]
+            if normalize:
+                image = (image - 0.5) / 0.5
+
+            return image, label
+
+        ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+
+        ds = ds.shard(
+            input_context.num_input_pipelines,
+            input_context.input_pipeline_id,
+        )
+
+        ds = ds.repeat()
+        ds = ds.shuffle(buffer_size, reshuffle_each_iteration=True)
+        ds = ds.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+
+        ds = ds.batch(
+            input_context.get_per_replica_batch_size(global_batch_size),
+            drop_remainder=True,
+        )
+
+        if ram:
+            ds = ds.cache()
+
+        ds = ds.prefetch(tf.data.AUTOTUNE)
+
+        return ds
+
+    return dataset_fn
+
+
+def load_cifar10_eval(
+    gray=True,
+    normalize=False,
+    batch_size=256,
+):
+    """
+    Carga el conjunto de datos de evaluación CIFAR-10.
+
+    Args:
+        gray (bool): Si True, convierte las imágenes a escala de grises.
+        normalize (bool): Si True, normaliza las imágenes.
+        batch_size (int): Tamaño del batch.
+
+    Returns:
+        tf.data.Dataset: Dataset de evaluación.
+    """
+    (_, _), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
+    y_test = y_test.flatten()
+
     def preprocess(image, label):
         if gray:
             image = tf.image.rgb_to_grayscale(image)
 
         image = tf.cast(image, tf.float32) / 255.0
 
-        if not normalize:
-            return image, label
+        if normalize:
+            image = (image - 0.5) / 0.5
 
-        image = (image - 0.5) / 0.5
         return image, label
 
-    if distributed:
-        options = tf.data.Options()
-        options.experimental_distribute.auto_shard_policy = (
-            tf.data.experimental.AutoShardPolicy.DATA
-        )
-        train_ds = train_ds.with_options(options)
-
-    # Pipeline entrenamiento
-    train_ds = (
-        train_ds.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
-        .shuffle(buffer_size)
-        .batch(batch_size)
-        .prefetch(tf.data.AUTOTUNE)
-    )
-
-    # Pipeline test (sin shuffle)
-    test_ds = (
-        test_ds.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
-        .batch(batch_size)
-        .prefetch(tf.data.AUTOTUNE)
-    )
-
-    if ram:
-        train_ds = train_ds.cache()
-        test_ds = test_ds.cache()
-
-    return train_ds, test_ds
+    ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
+    ds = ds.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+    ds = ds.batch(batch_size, drop_remainder=False)
+    ds = ds.prefetch(tf.data.AUTOTUNE)
+    return ds
 
 
 def plot_cifar10_images(ds, num_images=10, gray=True, normalize=False):
