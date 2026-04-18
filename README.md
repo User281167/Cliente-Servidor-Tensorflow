@@ -18,12 +18,8 @@ pip install -r requirements.txt
 ```
 
 
-### CIFAR-10 Distributed Data Parallel (DDP)
+### CIFAR-10 local
 
 ```bash
-# Terminal 1
-python -m cifar10.main --worker-ips 127.0.0.1:9090 127.0.0.1:9091 --worker-index 0 --epochs 20 --normalize --rgb --conv --save-dir "results"
-
-# Terminal 2
-python -m cifar10.main --worker-ips 127.0.0.1:9090 127.0.0.1:9091 --worker-index 1 --epochs 20 --normalize --rgb --conv --save-dir "results"
+python -m cifar10.local --epochs 20 --lr 0.001 --conv --rgb --normalize --batch-size 128
 ```

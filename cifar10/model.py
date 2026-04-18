@@ -25,7 +25,7 @@ class Cifar10Model(tf.keras.Model):
                         32, 3, padding="same", input_shape=(32, 32, 1 if gray else 3)
                     ),
                     tf.keras.layers.LeakyReLU(0.01),
-                    tf.keras.layers.SpatialDropout2D(0.2),
+                    tf.keras.layers.SpatialDropout2D(0.3),
                     tf.keras.layers.MaxPooling2D(2),
                     tf.keras.layers.Conv2D(64, 3, padding="same"),
                     tf.keras.layers.LeakyReLU(0.01),
@@ -43,7 +43,7 @@ class Cifar10Model(tf.keras.Model):
                     tf.keras.layers.Flatten(input_shape=(32, 32, 1 if gray else 3)),
                     tf.keras.layers.Dense(128),
                     tf.keras.layers.LeakyReLU(0.01),
-                    tf.keras.layers.Dropout(0.2),
+                    tf.keras.layers.Dropout(0.4),
                     tf.keras.layers.Dense(32),
                     tf.keras.layers.LeakyReLU(0.01),
                     tf.keras.layers.Dense(10),

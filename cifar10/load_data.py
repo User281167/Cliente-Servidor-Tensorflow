@@ -19,7 +19,6 @@ def load_cifar10_data(
     gray=True,
     normalize=False,
     ram=False,
-    distributed=False,
     batch_size=128,
     buffer_size=10000,
 ):
@@ -31,7 +30,6 @@ def load_cifar10_data(
         normalize (bool): Si se debe normalizar las imágenes.
         buffer_size (int): Tamaño del buffer para el shuffle.
         ram (bool): Si se debe cargar todo el dataset en RAM.
-        distributed (bool): Si se debe configurar el dataset para DDP.
 
     Returns:
         train_ds, test_ds: Datasets de entrenamiento y prueba.
@@ -59,13 +57,6 @@ def load_cifar10_data(
 
         image = (image - 0.5) / 0.5
         return image, label
-
-    if distributed:
-        options = tf.data.Options()
-        options.experimental_distribute.auto_shard_policy = (
-            tf.data.experimental.AutoShardPolicy.DATA
-        )
-        train_ds = train_ds.with_options(options)
 
     # Pipeline entrenamiento
     train_ds = (
