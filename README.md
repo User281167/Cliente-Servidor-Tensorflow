@@ -1,6 +1,4 @@
-# Cliente-Servidor PyTorch
-
-Proyecto de pruebas con PyTorch.
+# Cliente-Servidor Tensorflow
 
 ## Instalacion con `uv`
 
