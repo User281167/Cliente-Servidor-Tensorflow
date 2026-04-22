@@ -62,6 +62,8 @@ def train(
 
     with strategy.scope():
         model = create_model(gray=gray, conv=conv)
+        model.summary()
+
         optimizer = tf.keras.optimizers.Adam(lr)
 
         # sum_over_batch_size con reduce y minibatch
