@@ -124,6 +124,8 @@ def train(
         metrics.print_epoch(epochs=epochs)
 
     if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+
         with open(os.path.join(save_dir, "train_params.txt"), "w") as f:
             f.write(f"epochs: {epochs}\n")
             f.write(f"lr: {lr}\n")
@@ -132,7 +134,7 @@ def train(
             f.write(f"normalize: {normalize}\n")
             f.write(f"conv: {conv}\n")
             f.write(f"batch_size: {batch_size}\n")
-            f.write(f"Final accuracy: {metrics.df['accuracy'].iloc[-1]}")
+            f.write(f"Final accuracy: {metrics.df['acc'].iloc[-1]}")
 
     conf_matrix = None
 

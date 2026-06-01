@@ -191,4 +191,6 @@ class EpochMetrics:
                 save_path=save_dir,
             )
 
-            plot_confusion_matrix(conf_matrix, class_names=cifar10_classes)
+            plot_confusion_matrix(
+                conf_matrix, class_names=cifar10_classes, save_path=save_dir
+            )
