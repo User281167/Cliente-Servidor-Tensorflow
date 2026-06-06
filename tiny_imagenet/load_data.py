@@ -28,6 +28,11 @@ def _load_hf_split(dataset_id: str, split: str, keep_in_memory: bool = False):
     return load_dataset(dataset_id, split=split, keep_in_memory=keep_in_memory)
 
 
+def get_label_names(dataset_id: str = DATASET_ID) -> list[str]:
+    hf_ds = load_dataset(dataset_id, split="valid")
+    return hf_ds.features["label"].names
+
+
 def _prepare_source(
     dataset_id: str,
     split: str,
@@ -49,6 +54,7 @@ def _prepare_source(
 
     images = []
     labels = []
+
     print(f"Precargando {len(hf_ds)} imagenes Tiny ImageNet ({split}) en RAM...")
 
     for sample in hf_ds:
@@ -151,6 +157,38 @@ def load_tiny_imagenet_eval(
     ds = ds.batch(batch_size, drop_remainder=False)
 
     return ds.prefetch(tf.data.AUTOTUNE)
+
+
+def load_tiny_imagenet_eval_ddp(
+    batch_size: int = 256,
+    dataset_id: str = DATASET_ID,
+    split: str = "valid",
+    ram: bool = False,
+):
+    def dataset_fn(input_context):
+        # Sharding explícito igual que en train
+        source = _prepare_source(
+            dataset_id=dataset_id,
+            split=split,
+            num_shards=input_context.num_input_pipelines,
+            shard_index=input_context.input_pipeline_id,
+            ram=ram,
+        )
+        ds = _make_tf_dataset(source)
+        ds = ds.map(_tf_preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.batch(
+            input_context.get_per_replica_batch_size(batch_size),
+            drop_remainder=False,
+        )
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = (
+            tf.data.experimental.AutoShardPolicy.OFF
+        )
+        ds = ds.with_options(options)
+
+        return ds.prefetch(tf.data.AUTOTUNE)
+
+    return dataset_fn
 
 
 def save_index0_sample(

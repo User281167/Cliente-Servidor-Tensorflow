@@ -11,10 +11,16 @@ from .load_data import (
     TRAIN_SAMPLES,
     load_tiny_imagenet_ddp,
     load_tiny_imagenet_eval,
+    load_tiny_imagenet_eval_ddp,
     save_index0_sample,
 )
 from .metrics import EpochMetrics
-from .model import create_resnet18_classifier
+from .model import (
+    create_resnet18_classifier,
+    load_resnet_weights,
+    save_resnet_weights,
+)
+from .report import compute_confusion_matrix_and_accuracy, excel_report
 from .train import create_train_step
 
 
@@ -31,6 +37,11 @@ def train(
     dropout: float = 0.2,
     eval_batch_size: int = 256,
 ):
+    # ================================================
+    # Inicialización de TensorFlow y estrategia de distribución
+    # Datos distribuidos y modelo
+    # ================================================
+
     assert "TF_CONFIG" in os.environ, (
         "TF_CONFIG debe estar seteado antes de importar TensorFlow"
     )
@@ -71,11 +82,18 @@ def train(
             Path(save_dir).mkdir(parents=True, exist_ok=True)
             save_index0_sample(save_dir)
 
-        eval_dataset = load_tiny_imagenet_eval(
+    eval_step = create_eval_step(strategy, model, loss_fn)
+    eval_dataset = strategy.distribute_datasets_from_function(
+        load_tiny_imagenet_eval_ddp(
             batch_size=eval_batch_size,
-            ram=False,
+            ram=ram,
         )
-        eval_step = create_eval_step(model, loss_fn)
+    )
+
+    # ================================================
+    # Bucle de entrenamiento distribuido
+    # Test distribuido cada epoch
+    # ================================================
 
     for epoch in range(epochs):
         metrics.reset()
@@ -103,8 +121,7 @@ def train(
         throughput = r["n"] / epoch_time if epoch_time > 0 else 0.0
 
         eval_loss = eval_acc = eval_top5 = None
-        if is_chief:
-            eval_loss, eval_acc, eval_top5 = run_eval(eval_step, eval_dataset)
+        eval_loss, eval_acc, eval_top5 = run_eval(strategy, eval_step, eval_dataset)
 
         metrics.add(
             epoch=epoch,
@@ -118,8 +135,17 @@ def train(
 
     metrics.save(save_dir, worker_index)
 
+    # ================================================
+    # Guardar modelo y reporte de entrenamiento
+    # ================================================
     if is_chief and save_dir:
-        model.save(os.path.join(save_dir, "model.keras"))
+        save_resnet_weights(model, Path(save_dir) / "clasificador_head.npy")
+        model = load_resnet_weights(
+            weights_path=Path(save_dir) / "clasificador_head.npy",
+            train_backbone=train_backbone,
+            dropout=dropout,
+        )
+
         Path(save_dir, "train_params.txt").write_text(
             "\n".join(
                 [
@@ -139,3 +165,24 @@ def train(
             ),
             encoding="utf-8",
         )
+
+        print("Generando reporte de clases...")
+
+        report_dataset = load_tiny_imagenet_eval(
+            batch_size=eval_batch_size,
+            ram=False,
+        )
+
+        conf, per_class_acc, per_class_top5_acc = compute_confusion_matrix_and_accuracy(
+            model, report_dataset, NUM_CLASSES
+        )
+
+        excel_report(
+            per_class_acc=per_class_acc,
+            conf=conf,
+            loader=report_dataset,
+            save_path=save_dir,
+            per_class_top5_acc=per_class_top5_acc,
+        )
+
+        print("Reporte de clases generado.")

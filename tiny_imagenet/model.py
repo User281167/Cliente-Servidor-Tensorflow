@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 from huggingface_hub import snapshot_download
 
@@ -46,3 +47,38 @@ def create_resnet18_classifier(
 
     logits = tf.keras.layers.Dense(num_classes, name="classifier")(x)
     return tf.keras.Model(inputs=inputs, outputs=logits, name="tiny_imagenet_resnet18")
+
+
+def save_resnet_weights(model, path="clasificador_head.npy"):
+    weights_to_save = {}
+
+    for layer in model.layers:
+        if layer.trainable and not isinstance(layer, tf.keras.layers.TFSMLayer):
+            for var in layer.variables:
+                weights_to_save[var.name] = var.numpy()
+
+    # Guardar como archivo .npy (NumPy) - Instantáneo y sin bloqueos
+    np.save(path, weights_to_save)
+    print(f"Guardado exitoso: {len(weights_to_save)} tensores.")
+
+
+def load_resnet_weights(
+    weights_path="clasificador_head.npy", train_backbone=False, dropout=0.2
+):
+    model = create_resnet18_classifier(
+        num_classes=NUM_CLASSES,
+        train_backbone=train_backbone,
+        dropout=dropout,
+    )
+
+    weights = np.load(weights_path, allow_pickle=True).item()
+
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.layers.TFSMLayer):
+            continue
+        if layer.trainable:
+            for v in layer.variables:
+                if v.name in weights:
+                    v.assign(weights[v.name])
+
+    return model
