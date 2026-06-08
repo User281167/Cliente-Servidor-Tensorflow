@@ -11,7 +11,6 @@ from .load_data import (
     TRAIN_SAMPLES,
     load_tiny_imagenet_ddp,
     load_tiny_imagenet_eval,
-    load_tiny_imagenet_eval_ddp,
     save_index0_sample,
 )
 from .metrics import EpochMetrics
@@ -55,7 +54,16 @@ def train(
     train_dataset = strategy.distribute_datasets_from_function(
         load_tiny_imagenet_ddp(
             global_batch_size=global_batch_size,
-            buffer_size=buffer_size,
+            buffer_size=min(buffer_size, 100_000),
+            ram=ram,
+        )
+    )
+
+    eval_dataset = strategy.distribute_datasets_from_function(
+        load_tiny_imagenet_ddp(
+            global_batch_size=eval_batch_size,
+            buffer_size=min(buffer_size, 10_000),
+            split="valid",
             ram=ram,
         )
     )
@@ -75,20 +83,13 @@ def train(
         )
 
     train_step = create_train_step(strategy, model, optimizer, loss_fn)
+    eval_step = create_eval_step(strategy, model, loss_fn)
     metrics = EpochMetrics(is_chief=is_chief)
 
     if is_chief:
         if save_dir:
             Path(save_dir).mkdir(parents=True, exist_ok=True)
             save_index0_sample(save_dir)
-
-    eval_step = create_eval_step(strategy, model, loss_fn)
-    eval_dataset = strategy.distribute_datasets_from_function(
-        load_tiny_imagenet_eval_ddp(
-            batch_size=eval_batch_size,
-            ram=ram,
-        )
-    )
 
     # ================================================
     # Bucle de entrenamiento distribuido
@@ -120,7 +121,6 @@ def train(
         r = metrics.results()
         throughput = r["n"] / epoch_time if epoch_time > 0 else 0.0
 
-        eval_loss = eval_acc = eval_top5 = None
         eval_loss, eval_acc, eval_top5 = run_eval(strategy, eval_step, eval_dataset)
 
         metrics.add(
@@ -168,6 +168,7 @@ def train(
 
         print("Generando reporte de clases...")
 
+        # reporte solo en worker chief, dataset no distribuido
         report_dataset = load_tiny_imagenet_eval(
             batch_size=eval_batch_size,
             ram=False,

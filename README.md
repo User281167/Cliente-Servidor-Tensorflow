@@ -27,7 +27,7 @@ python -m tiny_imagenet.main --worker-ips 127.0.0.1:9090 127.0.0.1:9091 --worker
 - `metrics_<worker>.xlsx`
 - `description_<worker>.xlsx`
 - `grid.png`
-- `model.keras`
+- `clasificador_head.npy`
 - `train_params.txt`
 - `train_index0.png`
 - `train_index0.txt`
@@ -41,5 +41,4 @@ No se guarda matriz de confusion: 200 clases no es legible.
 - Usa `tf.keras` legacy (`TF_USE_LEGACY_KERAS=1`) porque `tfimm` aun usa nombres de capas con `/`.
 - Backbone congelado por defecto; usa `--train-backbone` para fine-tuning completo.
 - Preentrenado activo por defecto; baja SavedModel `tfimm/resnet18/model` desde Hugging Face.
-- Usa `--weights-path ruta/model` para cache manual o cluster sin internet.
-- `--no-pretrained` solo para pruebas offline.
+- Modelo con parametros en numpy para evitar problemas con tfimm
